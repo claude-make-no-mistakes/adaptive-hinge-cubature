@@ -1,0 +1,40 @@
+# Recovering a planar kink from line samples in adaptive cubature
+
+## Abstract
+
+A plane of discontinuous first derivative can force an adaptive integration rule to subdivide many boxes along the same surface. We estimate a single affine hinge from line samples, integrate the hinge analytically, and apply a Genz–Malik rule to the remaining callback. On 64 independently seeded quadratic-plus-hinge integrands in two to eight dimensions, the method met both requested absolute tolerances for every integrand. Across the 124 conditions that also passed with a cached active-set fit, the median speedup was 2.22×, with a 95% paired bootstrap interval of 2.14–2.39×. A separate family of narrow peaks produced 57 false convergences in 64 conditions under both methods. The evidence supports the pilot when a single planar kink is plausible and shows how little its validation says about an unsampled peak. [Timing and coverage](../doubling/RESULTS.md)
+
+## Problem and prior work
+
+Consider a deterministic scalar callback on the unit cube. A useful local model is $f(x)=q(x)+a(w^\top x-b)_+$, where $q$ is a quadratic polynomial and $u_+=\max(u,0)$. Within each half-space the integrand is a polynomial. A box crossing the plane sees both pieces. Locating the interface once offers an alternative to repeatedly shrinking boxes that cross it. Genz and Malik developed the rectangular-region integration rule used here. Hahn's Cuba library supplies the Cuhre implementation in our earlier external comparison. Marichal and Mossinghoff give related inclusion–exclusion formulas for sections of the cube. [Genz and Malik](https://doi.org/10.1016/0771-050X(80)90039-X) · [Hahn](https://arxiv.org/abs/hep-ph/0404043) · [Marichal and Mossinghoff](https://arxiv.org/abs/math/0607715)
+
+## Recovering and checking the hinge
+
+Restrict $f$ to $x=c+t v$, where $c$ is the centre of the cube. Equally spaced samples of a quadratic have constant second difference. A piecewise-linear hinge contributes at most two adjacent nonzero second differences. For a knot $t_j+\theta h$ strictly between two interior nodes, their excesses over the constant background are $Jh(1-\theta)$ and $Jh\theta$, where $J$ is the signed change in slope and $h$ is the spacing. Their sum identifies $J$, and their ratio locates the knot. A knot at the end of the sampled line can leave an ambiguous single excess. The implementation discards that observation.
+
+Nine samples along each of several lines produce candidate normal projections. The centre shared by all lines resolves their relative orientation up to reversing the plane. Reversing a hinge adds an affine term that the quadratic background can absorb. The algorithm requires sufficiently many consistent projections and a well-conditioned least-squares fit. It then evaluates disjoint checking points on both sides and compares the predicted residual with the observed callback. When this fit fails, the remaining point budget determines whether to use the active-set pilot or directional subdivision. [Recovery and validation implementation](../workhorses/cubature.py)
+
+For an accepted hinge, exact integer arithmetic on the binary64 coefficients evaluates the corner-power formula before the last rounding. The numerical rule evaluates the callback minus the hinge, and the final estimate adds the analytic correction. Held-out fit samples check a model. The embedded rule estimates integration error. Neither mechanism provides a uniform guarantee over all smooth or piecewise-smooth callbacks. [Exact-kernel checks](../followup/RESULTS.md)
+
+## Evaluation
+
+We used eight manufactured families, 320 independent draws, absolute tolerances of $3\times10^{-5}$ and $3\times10^{-6}$, and a cap of 65,536 callback points per integration. Verification checks the returned status and error against independent reference integrals. A false convergence occurs when the method reports convergence and misses the requested accuracy. Within each draw we paired methods and kept both tolerances together when resampling. The speed comparison includes fitting, validation and residual integration with warm sample geometry. This cohort also informed implementation choices. [Protocol](../doubling/PROTOCOL.md) · [Raw attempts](../doubling/runs/cubature-v2.jsonl)
+
+| Family | Verified with active-set fit | Verified with rays | False convergences with rays |
+| --- | ---: | ---: | ---: |
+| Quadratic and one kink | 124/128 | 128/128 | 0 |
+| Mixed background and one kink | 32/128 | 32/128 | 0 |
+| Two kinks | 15/64 | 15/64 | 1 |
+| Curved kink | 24/64 | 24/64 | 0 |
+| Smooth Gaussian | 33/64 | 33/64 | 0 |
+| Oscillatory | 16/64 | 16/64 | 0 |
+| Product peak | 36/64 | 36/64 | 1 |
+| Narrow peak | 5/64 | 5/64 | 57 |
+
+On jointly successful quadratic-hinge conditions, the speed ratio increased from 1.99× in two dimensions to 2.68× in eight. The pilot used 250 points in two dimensions and 549 in eight, against 320 for the active-set control. A larger callback cost can therefore change the ordering of the methods. On the narrow-peak family, the ratio across all conditions was 0.84×. [Per-dimension estimates and intervals](../doubling/summary.json)
+
+All rays pass through the same centre. For a deterministic pointwise callback, the pilot can evaluate that point once and distribute its value to all line fits. This saved 17, 27, 37 and 47 pilot evaluations at dimensions 2, 4, 6 and 8 on the quadratic-hinge family. Across its 128 conditions, total callback points fell from 70,560 to 66,464 (5.80%). Across all eight families the new mode saved 20,480 evaluations. All 640 estimates, 289 verified outcomes and 59 false convergences matched the archived ray results. This extension measures callback work. The 2.22× timing above belongs to the earlier ray implementation. [Point-count experiment](runs/cubature.jsonl) · [Work and coverage totals](summary.json)
+
+## Discussion
+
+The algebra explains why the pilot can recover this particular singularity. The timings measure the cost of doing so for vectorized manufactured callbacks. The next external test should use frozen application callbacks with known reference values and measure callback time as well as point count. The narrow-peak results also motivate a separate stopping-rule study with independent sample coverage.
