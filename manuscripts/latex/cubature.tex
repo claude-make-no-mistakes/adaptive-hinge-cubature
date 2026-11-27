@@ -1,55 +1,90 @@
-% Faithful LaTeX transcription of ../cubature.md.
-
-\documentclass[11pt,letterpaper]{article}
+\documentclass[10pt,letterpaper]{article}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
-\usepackage{amsmath}
-\usepackage{array,tabularx}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs,tabularx}
 \usepackage{xcolor}
-\usepackage[margin=.84in,top=.72in,bottom=.78in]{geometry}
+\usepackage[margin=0.9in]{geometry}
+\setlength{\emergencystretch}{1em}
 \definecolor{linkblue}{RGB}{28,77,122}
 \usepackage[colorlinks=true,allcolors=linkblue]{hyperref}
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{5pt plus 1pt}
-\setlength{\emergencystretch}{2em}
-\renewcommand{\arraystretch}{1.17}
-\raggedbottom
 
-\hypersetup{pdftitle={Recovering a planar kink from line samples in adaptive cubature}}
+\newtheorem{proposition}{Proposition}
+
+\hypersetup{
+  pdftitle={Recovering a Planar Kink from Line Samples in Adaptive Cubature},
+  pdfsubject={Adaptive Cubature}
+}
+
+\title{Recovering a Planar Kink from Line Samples in Adaptive Cubature}
+\author{}
+\date{}
 
 \begin{document}
+\maketitle
+\vspace{-2.5em}
 
-{\LARGE\bfseries\raggedright\hyphenpenalty=10000 Recovering a planar kink from line samples in adaptive cubature\par}
+\begin{abstract}
+A hyperplane of discontinuous first derivative can force an adaptive cubature rule to subdivide many boxes along the same interface. We estimate a single affine hinge from equally spaced samples along rays through the box center, integrate the recovered hinge analytically in exact integer arithmetic prior to final rounding, and apply an adaptive Genz--Malik rule to the remaining callback residual. On 64 independently seeded quadratic-plus-hinge integrands in two to eight dimensions (128 tolerance conditions), the ray pilot verified all 128/128 conditions, compared with 124/128 for a cached active-set fit. Across the 124 jointly verified conditions, the median speedup was $2.22\times$ (95\% paired bootstrap interval $2.14\text{--}2.39\times$). Sharing the common center sample across all rays saved 5.80\% of callback evaluations on the quadratic-hinge family (20,480 evaluations across all eight families) while reproducing all 640 estimates, 289 verified outcomes, and 59 false convergences identically. A separate family of narrow peaks produced 57 false convergences in 64 conditions under both methods, underscoring that held-out validation checks a fitted hinge model rather than guaranteeing accuracy on unsampled localized features.
+\end{abstract}
 
-\section*{Abstract}
+\section{Problem and Prior Work}
 
-A plane of discontinuous first derivative can force an adaptive integration rule to subdivide many boxes along the same surface. We estimate a single affine hinge from line samples, integrate the hinge analytically, and apply a Genz--Malik rule to the remaining callback. On 64 independently seeded quadratic-plus-hinge integrands in two to eight dimensions, the method met both requested absolute tolerances for every integrand. Across the 124 conditions that also passed with a cached active-set fit, the median speedup was 2.22\(\times\), with a 95\% paired bootstrap interval of 2.14--2.39\(\times\). A separate family of narrow peaks produced 57 false convergences in 64 conditions under both methods. The evidence supports the pilot when a single planar kink is plausible and shows how little its validation says about an unsampled peak. \href{../../../doubling/RESULTS.md}{Timing and coverage}
+Consider integrating a deterministic scalar callback $f\colon [0,1]^d \to \mathbb{R}$ ($2 \leq d \leq 8$) to a requested absolute or relative tolerance under a fixed evaluation budget. A canonical local model with a planar derivative discontinuity is
+\[
+f(x) = q(x) + a\,(w^\top x - b)_+,
+\]
+where $q$ is a quadratic polynomial, $w \in \mathbb{R}^d$, $b,a \in \mathbb{R}$, and $u_+ = \max(u, 0)$. Within each open half-space $\{w^\top x > b\}$ and $\{w^\top x < b\}$, the integrand is polynomial; however, every sub-box intersecting the hyperplane $w^\top x = b$ exhibits a kink that slows polynomial cubature convergence.
 
-\section{Problem and prior work}
+Locating the hinge interface once and subtracting it analytically avoids repeatedly bisecting boxes along the kink. Our adaptive residual rule uses the embedded degree-7/5 rectangular-region cubature rule of Genz and Malik~\cite{genz1980}; Hahn's Cuba library~\cite{hahn2005} provides the Cuhre implementation used in earlier external comparisons. Exact analytical integration of $(w^\top x - b)_+$ over $[0,1]^d$ uses truncated-power inclusion--exclusion formulas related to sections of the hypercube~\cite{marichal2008}.
 
-Consider a deterministic scalar callback on the unit cube. A useful local model is \(f(x)=q(x)+a(w^\top x-b)_+\), where \(q\) is a quadratic polynomial and \(u_+=\max(u,0)\). Within each half-space the integrand is a polynomial. A box crossing the plane sees both pieces. Locating the interface once offers an alternative to repeatedly shrinking boxes that cross it. Genz and Malik developed the rectangular-region integration rule used here. Hahn's Cuba library supplies the Cuhre implementation in our earlier external comparison. Marichal and Mossinghoff give related inclusion--exclusion formulas for sections of the cube. \href{https://doi.org/10.1016/0771-050X(80)90039-X}{Genz and Malik} \textperiodcentered{} \href{https://arxiv.org/abs/hep-ph/0404043}{Hahn} \textperiodcentered{} \href{https://arxiv.org/abs/math/0607715}{Marichal and Mossinghoff}
+\section{Hinge Recovery, Validation, and Exact Integration}
 
-\section{Recovering and checking the hinge}
+\subsection{Second-Difference Ray Recovery}
 
-Restrict \(f\) to \(x=c+t v\), where \(c\) is the centre of the cube. Equally spaced samples of a quadratic have constant second difference. A piecewise-linear hinge contributes at most two adjacent nonzero second differences. For a knot \(t_j+\theta h\) strictly between two interior nodes, their excesses over the constant background are \(Jh(1-\theta)\) and \(Jh\theta\), where \(J\) is the signed change in slope and \(h\) is the spacing. Their sum identifies \(J\), and their ratio locates the knot. A knot at the end of the sampled line can leave an ambiguous single excess. The implementation discards that observation.
+\begin{proposition}[Line-sample recovery]
+Restrict $f(x) = q(x) + a(w^\top x - b)_+$ to a ray $x(t) = c + t v$ through the box center $c = (\tfrac{1}{2},\dots,\tfrac{1}{2})^\top$, sampled at equally spaced nodes $t_k = t_0 + k h$ ($k=0,\dots,8$). Let $\Delta^2 g_k = g(t_{k+2}) - 2g(t_{k+1}) + g(t_k)$ denote the second forward difference. Then $\Delta^2 (q \circ x)_k$ is constant in $k$, and if the ray crosses the hyperplane at an interior knot $t^* = t_j + \theta h$ with $0 \leq \theta < 1$, the excess of $\Delta^2(f \circ x)_k$ over the constant background is zero except at $k = j-1$ and $k = j$, where it equals
+\[
+\delta_1 = J h (1 - \theta), \qquad \delta_2 = J h \theta,
+\]
+with signed slope jump $J = a\,|w^\top v|$. In particular, $J = (\delta_1 + \delta_2)/h$ and $J t^* = t_j J + \delta_2$.
+\end{proposition}
 
-Nine samples along each of several lines produce candidate normal projections. The centre shared by all lines resolves their relative orientation up to reversing the plane. Reversing a hinge adds an affine term that the quadratic background can absorb. The algorithm requires sufficiently many consistent projections and a well-conditioned least-squares fit. It then evaluates disjoint checking points on both sides and compares the predicted residual with the observed callback. When this fit fails, the remaining point budget determines whether to use the active-set pilot or directional subdivision. \href{../../../workhorses/cubature.py}{Recovery and validation implementation}
+\begin{proof}
+Along $x(t) = c + tv$, we have $w^\top x(t) - b = H_0 + (w^\top v) t$, where $H_0 = w^\top c - b$. Whenever $w^\top v \neq 0$, the kink lies at $t^* = -H_0 / (w^\top v)$ and $(w^\top x(t) - b)_+$ differs from $|w^\top v|\,(t - t^*)_+$ by at most an affine function of $t$, which has vanishing second difference. Direct evaluation of $(t - t^*)_+$ at $t_{j-1}, t_j, t_{j+1}, t_{j+2}$ yields $\Delta^2(t - t^*)_+|_{j-1} = (1-\theta)h$, $\Delta^2(t - t^*)_+|_{j} = \theta h$, and zero for all other indices. Multiplying by $J = a\,|w^\top v|$ gives $\delta_1$ and $\delta_2$, whose sum is $Jh$, and $t_j J + \delta_2 = J(t_j + \theta h) = J t^*$.
+\end{proof}
 
-For an accepted hinge, exact integer arithmetic on the binary64 coefficients evaluates the corner-power formula before the last rounding. The numerical rule evaluates the callback minus the hinge, and the final estimate adds the analytic correction. Held-out fit samples check a model. The embedded rule estimates integration error. Neither mechanism provides a uniform guarantee over all smooth or piecewise-smooth callbacks. \href{../../../followup/RESULTS.md}{Exact-kernel checks}
+A knot falling in the outermost interval can produce a single ambiguous excess; the implementation discards such observations. For each valid ray with $H_0 \neq 0$, the product $r = J t^* = -a H_0 \operatorname{sgn}(w^\top v)$ determines the relative orientation across all rays sharing the center $c$, since
+\[
+-\operatorname{sgn}(r)\,J = |a|\operatorname{sgn}(H_0)\,(w^\top v).
+\]
+Solving the linear least-squares system across all valid rays recovers $\tilde{w} = |a|\operatorname{sgn}(H_0) w$, while the median of $|r|$ gives $|a H_0|$ and hence $\tilde{b} = \tilde{w}^\top c - |a H_0| = |a|\operatorname{sgn}(H_0) b$. With $\tilde{a} = \operatorname{sgn}(a)$, the recovered hinge $\tilde{a}(\tilde{w}^\top x - \tilde{b})_+$ either matches $a(w^\top x - b)_+$ (when $H_0 > 0$) or equals its reflection $a(b - w^\top x)_+$ (when $H_0 < 0$), which differs only by an affine term absorbed into the quadratic background.
 
-\clearpage
+The pilot uses $5d + 8$ rays (the $d$ coordinate axes plus $4d + 8$ seeded directions) with 9 samples per ray, requires at least $d$ consistent projections and a well-conditioned least-squares system (singular-value ratio at least $10^{-3}$), and checks the candidate on held-out Sobol points spanning both half-spaces against a quadratic fit. When ray recovery or validation fails, the remaining evaluation budget determines whether the algorithm falls back to the active-set pilot or directly to directional subdivision.
 
-\section{Evaluation}
+\subsection{Exact Integer Corner-Power Integration}
 
-We used eight manufactured families, 320 independent draws, absolute tolerances of \(3\times10^{-5}\) and \(3\times10^{-6}\), and a cap of 65,536 callback points per integration. Verification checks the returned status and error against independent reference integrals. A false convergence occurs when the method reports convergence and misses the requested accuracy. Within each draw we paired methods and kept both tolerances together when resampling. The speed comparison includes fitting, validation and residual integration with warm sample geometry. This cohort also informed implementation choices. \href{../../../doubling/PROTOCOL.md}{Protocol} \textperiodcentered{} \href{../../../doubling/runs/cubature-v2.jsonl}{Raw attempts}
+Every finite IEEE-754 binary64 coefficient in $w$, $b$, and $a$ is an exact dyadic rational. Clearing the common power-of-two denominator $S$ produces integer slopes $s_i = S w_i$ and offset $\beta = S b$. Reflecting coordinates with $s_i < 0$ shifts the minimum over $[0,1]^d$ to $L = \sum_i \min(s_i, 0) - \beta$ with positive widths $u_i = |s_i|$ for the $k$ nonzero slopes ($k \leq d$) and total span $U = \sum u_i$. When $L < 0 < L + U$, repeated integration over $[0,1]^k$ gives the inclusion--exclusion identity~\cite{marichal2008}
+\[
+\int_{[0,1]^k} \Bigl(H - \sum_{i=1}^k u_i x_i\Bigr)_+ \, dx
+= \frac{1}{(k+1)!\prod_{i=1}^k u_i} \sum_{T \subseteq \{1,\dots,k\}} (-1)^{|T|} \Bigl(H - \sum_{i \in T} u_i\Bigr)_+^{k+1},
+\]
+with $H = L + U$. Whenever $-L < L + U$, applying $z_+ = z + (-z)_+$ reflects the sum to the shorter tail $H' = -L$, reducing the number of surviving corners. All corner powers and denominators are evaluated in exact Python arbitrary-precision integers with a single binary64 division at the end, ensuring exact rounding prior to scaling by the box volume. The adaptive Genz--Malik rule then integrates the residual $f(x) - \tilde{a}(\tilde{w}^\top x - \tilde{b})_+$ and adds the analytic integral back. Held-out validation checks the surrogate fit, while the embedded rule estimates integration error; neither mechanism provides a uniform worst-case guarantee over arbitrary callbacks.
 
-\par\smallskip
-\begingroup\small
-\setlength{\tabcolsep}{5pt}
-\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}X>{\centering\arraybackslash}p{1.00in}>{\centering\arraybackslash}p{0.93in}>{\centering\arraybackslash}p{1.10in}}
-\hline
-\textbf{Family} & \textbf{Verified with active-set fit} & \textbf{Verified with rays} & \textbf{False convergences with rays} \\
-\hline
+\section{Empirical Evaluation}
+
+We evaluated the method across eight manufactured integrand families totaling 320 independent draws in dimensions $d \in \{2, 4, 6, 8\}$, each tested at absolute tolerances $3\times 10^{-5}$ and $3\times 10^{-6}$ (640 total conditions) with a cap of 65,536 callback evaluations per integration. Verification checks both the returned convergence status and the actual error against independent reference integrals. A \emph{false convergence} occurs when a solver reports convergence while exceeding the requested tolerance. Within each draw, methods were paired and both tolerances were kept together during bootstrap resampling. Timing comparisons include fitting, validation, and residual integration with warm sample geometry; the same cohort informed implementation choices.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Verification coverage and false-convergence counts across 640 conditions (320 independent integrands at two tolerances).}
+\label{tab:coverage}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}Xccc}
+\toprule
+\textbf{Family} & \textbf{Verified (active-set)} & \textbf{Verified (rays)} & \textbf{False conv.\ (rays)} \\
+\midrule
 Quadratic and one kink & 124/128 & 128/128 & 0 \\
 Mixed background and one kink & 32/128 & 32/128 & 0 \\
 Two kinks & 15/64 & 15/64 & 1 \\
@@ -58,17 +93,41 @@ Smooth Gaussian & 33/64 & 33/64 & 0 \\
 Oscillatory & 16/64 & 16/64 & 0 \\
 Product peak & 36/64 & 36/64 & 1 \\
 Narrow peak & 5/64 & 5/64 & 57 \\
-\hline
+\midrule
+\textbf{Total} & \textbf{285/640} & \textbf{289/640} & \textbf{59} \\
+\bottomrule
 \end{tabularx}
-\endgroup
-\par\smallskip
+\end{table}
 
-On jointly successful quadratic-hinge conditions, the speed ratio increased from 1.99\(\times\) in two dimensions to 2.68\(\times\) in eight. The pilot used 250 points in two dimensions and 549 in eight, against 320 for the active-set control. A larger callback cost can therefore change the ordering of the methods. On the narrow-peak family, the ratio across all conditions was 0.84\(\times\). \href{../../../doubling/summary.json}{Per-dimension estimates and intervals}
+On the 124 jointly verified quadratic-hinge conditions (62 integrands), the ray pilot achieved a median wall-time speedup of $2.22\times$ (95\% bootstrap interval $2.14\text{--}2.39\times$), rising from $1.99\times$ in two dimensions ($2.19\times$ in 4D, $2.37\times$ in 6D) to $2.68\times$ in eight dimensions. The unshared ray pilot requires 250 points in two dimensions and 549 points in eight dimensions, compared with 320 for the active-set control, so higher callback evaluation costs can shift the wall-time balance. On the narrow-peak family, the median speed ratio across all 64 conditions was $0.84\times$.
 
-All rays pass through the same centre. For a deterministic pointwise callback, the pilot can evaluate that point once and distribute its value to all line fits. This saved 17, 27, 37 and 47 pilot evaluations at dimensions 2, 4, 6 and 8 on the quadratic-hinge family. Across its 128 conditions, total callback points fell from 70,560 to 66,464 (5.80\%). Across all eight families the new mode saved 20,480 evaluations. All 640 estimates, 289 verified outcomes and 59 false convergences matched the archived ray results. This extension measures callback work. The 2.22\(\times\) timing above belongs to the earlier ray implementation. \href{../../../manuscripts/runs/cubature.jsonl}{Point-count experiment} \textperiodcentered{} \href{../../../manuscripts/summary.json}{Work and coverage totals}
+Because all $5d + 8$ rays pass through the common box center $c$, a deterministic pointwise callback need evaluate $c$ only once per pilot (\texttt{blind-rays-shared}). This eliminates $5d + 7$ pilot evaluations per call---saving 17, 27, 37, and 47 evaluations in dimensions 2, 4, 6, and 8, respectively. On the 128 quadratic-hinge conditions, total callback evaluations dropped from 70,560 to 66,464 (a 5.80\% reduction); across all 640 conditions, the shared-center mode saved 20,480 evaluations while reproducing all 640 estimates, 289 verified outcomes, and 59 false convergences identically. The $2.22\times$ wall-time speedup reported above was measured on the earlier unshared ray implementation; the shared-center experiment measures evaluation counts.
 
 \section{Discussion}
 
-The algebra explains why the pilot can recover this particular singularity. The timings measure the cost of doing so for vectorized manufactured callbacks. The next external test should use frozen application callbacks with known reference values and measure callback time as well as point count. The narrow-peak results also motivate a separate stopping-rule study with independent sample coverage.
+The second-difference structure explains why line samples through a shared center accurately recover a single planar kink against a quadratic background, while exact integer evaluation of the truncated-power formula eliminates cancellation in the analytic correction. The empirical benchmarks quantify these gains on vectorized manufactured callbacks. Evaluating the approach on frozen application callbacks with realistic evaluation costs---and pairing it with stopping rules resilient to unsampled narrow peaks---remain important next steps.
+
+\paragraph{Code and data availability.}
+The implementation (\nolinkurl{workhorses/cubature.py}), unit tests (\nolinkurl{tests/test_cubature.py}), benchmark scripts (\nolinkurl{benchmarks/}), and archived measurement journals (\nolinkurl{doubling/runs/}, \nolinkurl{followup/runs/}, \nolinkurl{manuscripts/runs/}) with SHA-256 receipts (\nolinkurl{manuscripts/summary.json}) are included in the accompanying repository.
+
+\begin{thebibliography}{3}
+\bibitem{genz1980}
+A.~C. Genz and A.~A. Malik.
+\newblock Remarks on algorithm 006: An adaptive algorithm for numerical integration over an $N$-dimensional rectangular region.
+\newblock \emph{Journal of Computational and Applied Mathematics}, 6(4):295--302, 1980.
+\newblock \href{https://doi.org/10.1016/0771-050X(80)90039-X}{doi:10.1016/0771-050X(80)90039-X}.
+
+\bibitem{hahn2005}
+T.~Hahn.
+\newblock CUBA---a library for multidimensional numerical integration.
+\newblock \emph{Computer Physics Communications}, 168(2):78--95, 2005.
+\newblock \href{https://arxiv.org/abs/hep-ph/0404043}{arXiv:hep-ph/0404043}.
+
+\bibitem{marichal2008}
+J.-L. Marichal and M.~J. Mossinghoff.
+\newblock Slices, slabs, and sections of the unit hypercube.
+\newblock \emph{Online Journal of Analytic Combinatorics}, 3, 2008.
+\newblock \href{https://arxiv.org/abs/math/0607715}{arXiv:math/0607715}.
+\end{thebibliography}
 
 \end{document}
